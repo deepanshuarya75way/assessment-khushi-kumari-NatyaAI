@@ -868,6 +868,47 @@
 // ══════════════════════════════════════════════════════════════════
 // Data
 // ══════════════════════════════════════════════════════════════════
+async function loadCandidates() {
+  const container = document.getElementById("training-candidates");
+  try {
+    const response = await fetch("http://127.0.0.1:10000/adaptive/candidates");
+    const candidates = await response.json()
+    
+    const pending = candidates.filter(
+      c => c.review_status === "PENDING"
+    );
+    if (pending.length === 0) {
+      container.innerHTML = `
+      <p> No examples waiting for review.</p>
+      `
+    }
+
+    container.innerHTML = pending.map(c => `
+    <div>
+      <p> predicted: ${c.predicted_label} </p>
+       <p> confidence: ${(c.confidence*100).toFixed(1)}% </p>
+        <p> Reason: ${c.reason} </p>
+       </div>
+    `)
+  }
+  catch(error) {
+    container.innerHTML = "Unabel to load review queue"
+  }
+}
+async function approveCandidate(id) {
+  const label = document.getElementById("label-" + id).value;
+
+  await fetch(`http://127.0.0.1:1000/adaptive/candidats/${id}/approve` , 
+    {
+      method : "POST",
+      headers: {
+        "content-Type": "application/json"
+      },
+      body: JSON.stringify({ label })
+    }
+  );
+  loadCandidates();
+}
 const MUDRAS = [
   { name: 'Alapadma',      emoji: '🌸' },
   { name: 'Bramhara',      emoji: '🦋' },
