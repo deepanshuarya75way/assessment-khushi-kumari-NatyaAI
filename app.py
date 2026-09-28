@@ -232,7 +232,7 @@ def approve_candidate(candidate_id):
                 with open(APPROVED_PATH , "w") as f:
                     approved = json.load(f)
             approved.append({
-                "id": candidate(["id"])
+                "id": candidate(["id"]),
                 "label":label,
                 "features" : candidate["features"],
                 "timestamp": candidate["timestamp"]
