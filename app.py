@@ -1,5 +1,8 @@
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
+import json
+from datetime import datetime
+import uuid
 import cv2
 import mediapipe as mp
 import joblib
@@ -10,8 +13,43 @@ import os
 import logging
 
 
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 
+ADAPTIVE_DIR = os.path.join(BASE_DIR , "adaptive")
+CANDIDATES_PATH = os.path.join(ADAPTIVE_DIR , "adaptive.json")
+
+os.makedir(ADAPTIVE_DIR , exist_ok = True)
+
+if not os.path.exists(CANDIDATES_PATH):
+    with open(CANDIDATES_PATH, "W") as f:
+        json.dump([] , f)
+
+def save_candidates(features , predicted_label , confidence , reason):
+    try:
+        with open(CANDIDATES_PATH , "r") as f:
+            candidates = json.load(f)
+
+        candidate = {
+            "id": str(uuid.uuid4()),
+            "timestamp":datetime.now().isoformat(),
+            "predicted_label": predicted_label ,
+            "confidence": round(float(confidence) , 4) ,
+            "label":"",
+            "review_status":"PENDING",
+            "reason":reason,
+            "features":features.tolist()
+        } 
+        candidates.append(candidate)
+
+        with open(CANDIDATES_PATH , "w") as f:
+            json.dump(candidates , f , indent = 2)
+        
+        return candidate
+    
+    except Exception as e:
+        log.error(f"candidate save error: {e}")
+        return home
+
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 
 MODEL_PATH   = os.path.join(BASE_DIR, "model.pkl")
 ENCODER_PATH = os.path.join(BASE_DIR, "label_encoder.pkl")
@@ -130,6 +168,14 @@ def predict():
 
         predicted_label = encoder.inverse_transform([best_idx])[0]
 
+
+        if best_prob < CONFIDENCE_THRESHOLD:
+            save_candidate(
+                features , 
+                predicted_label,
+                best_prob,
+                "LOW_CONFIDENCE"
+            )
         if best_prob >= CONFIDENCE_THRESHOLD:
             return jsonify({
                 "label":      predicted_label,
@@ -157,6 +203,55 @@ def health():
         "model_type":  type(model).__name__,
     })
 
+@app.route("/adaptive/candidates" , methods=["GET"])
+def get_candidates():
+    with open(CANDIDATES_PATH , "r") as f:
+        candidates = json.load(f)
+    
+    return jsonify(candidates)
+
+@app.route("/adaptive/candidates/<canddidate_id>/approve" , methods = ["POST"])
+def approve_candidate(candidate_id):
+    data = request.json or {}
+    label = data.get("label")
+
+    if not label:
+        return jsonify({"error": "Label is required"}),400
+
+    with open(CANDIDATES_PATH , "r") as f:
+        candidate = json.load(f)
+    
+    found = None
+
+    for candidate in candidates:
+        if candidate["id"] == canddidate_id:
+            candidate["label"] = label
+            candidate["review_status"] = "APPROVED"
+            APPROVED_PATH = os.path.join(ADAPTIVE_DIR , "approve.json")
+            if not os.path.exists(APPROVED_PATH):
+                with open(APPROVED_PATH , "w") as f:
+                    approved = json.load(f)
+            approved.append({
+                "id": candidate(["id"])
+                "label":label,
+                "features" : candidate["features"],
+                "timestamp": candidate["timestamp"]
+            })
+            with open(APPROVED_PATH , "W") as f:
+                json.dump(approved , f , indent = 2)
+            found = candidate
+            break
+        
+        if not found:
+            return jsonify({"error": "candidate not found"}), 404
+        
+        with open(CANDIDATES_PATH , "w") as f:
+            json.dump(candidates , f  , indent = 2)
+        
+        return jsonify({
+            "message" : "candidate approved" , 
+            "candidate" : found
+        })
 
 @app.route("/classes", methods=["GET"])
 def classes():

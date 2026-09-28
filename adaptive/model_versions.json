@@ -1,0 +1,7 @@
+[
+  {
+    "version": "v1",
+    "status": "ACTIVE",
+    "model" : "model.pkl"
+  }
+]
